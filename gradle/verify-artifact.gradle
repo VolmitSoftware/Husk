@@ -1,0 +1,140 @@
+import groovy.json.JsonSlurper
+import java.nio.charset.StandardCharsets
+import java.util.jar.JarEntry
+import java.util.jar.JarFile
+import java.util.jar.JarInputStream
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
+String platform = project.name == 'bukkit' ? 'bukkit' : projectDir.name
+Map<String, String> metadataPaths = [bukkit: 'plugin.yml', fabric: 'fabric.mod.json', forge: 'META-INF/mods.toml', neoforge: 'META-INF/neoforge.mods.toml']
+Map<String, String> entrypoints = [bukkit: "${husk.projectGroup}.bukkit.HuskPlugin", fabric: "${husk.projectGroup}.fabric.HuskFabric", forge: "${husk.projectGroup}.forge.HuskForge", neoforge: "${husk.projectGroup}.neoforge.HuskNeoForge"]
+TaskProvider verification = tasks.register('verifyArtifact') {
+    group = 'verification'
+    description = 'Checks runtime metadata, bundled libraries and platform boundaries.'
+    dependsOn('shadowJar')
+    inputs.file(tasks.named('shadowJar').flatMap { task -> task.archiveFile })
+    inputs.properties(husk)
+    inputs.property('minecraftTargets', minecraftTargets)
+    doLast {
+        File artifact = tasks.named('shadowJar').get().archiveFile.get().asFile
+        Closure<Void> require = { boolean condition, String message ->
+            if (!condition) {
+                throw new GradleException("${artifact.name}: ${message}")
+            }
+            null
+        }
+        String metadataPath = metadataPaths[platform]
+        String entrypoint = entrypoints[platform]
+        String namespace = husk.projectGroup.replace('.', '/') + '/'
+        String internal = namespace + 'internal/'
+        Map<String, Object> target = minecraftTargets[husk.minecraftVersion]
+        new JarFile(artifact).withCloseable { JarFile archive ->
+            List<String> required = [metadataPath, entrypoint.replace('.', '/') + '.class',
+                namespace + 'core/HuskRuntime.class', namespace + 'core/BuildIdentity.class',
+                internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/io/AtomicFileIO.class',
+                internal + 'gson/Gson.class']
+            if (platform != 'bukkit') {
+                required.add(namespace + 'mod/HuskModRuntime.class')
+            }
+            required.each { String path -> require(archive.getEntry(path) != null, "missing ${path}") }
+            (metadataPaths.values() + ['paper-plugin.yml']).findAll { String path -> path != metadataPath }.each { String path ->
+                require(archive.getEntry(path) == null, "contains foreign platform metadata ${path}")
+            }
+            Set<String> classes = new HashSet<>()
+            List<String> forbidden = ['org/bukkit/', 'org/spigotmc/', 'io/papermc/', 'net/minecraft/',
+                'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/']
+            archive.entries().each { JarEntry entry ->
+                if (!entry.name.endsWith('.class')) {
+                    return
+                }
+                require(classes.add(entry.name), "duplicate class ${entry.name}")
+                String classPath = entry.name.replaceFirst('^META-INF/versions/[0-9]+/', '')
+                require(!forbidden.any { String prefix -> classPath.startsWith(prefix) }, "bundled platform or unrelocated library class ${entry.name}")
+                if (classPath.startsWith('art/arcane/husk/') && !classPath.startsWith(internal)) {
+                    archive.getInputStream(entry).withCloseable { InputStream stream ->
+                        byte[] bytecode = stream.readAllBytes()
+                        DataInputStream bytes = new DataInputStream(new ByteArrayInputStream(bytecode))
+                        require(bytes.readInt() == -889275714, "invalid class file ${entry.name}")
+                        bytes.readUnsignedShort()
+                        require(bytes.readUnsignedShort() == 69, "${entry.name} must target Java 25")
+                        String constants = new String(bytecode, StandardCharsets.ISO_8859_1)
+                        require(!constants.contains('art/arcane/volmlib/') && !constants.contains('com/google/gson/'), "unrelocated library reference in ${entry.name}")
+                    }
+                }
+            }
+            String metadata = archive.getInputStream(archive.getJarEntry(metadataPath)).withCloseable { InputStream stream -> stream.getText('UTF-8') }
+            require(!metadata.contains('${'), "unexpanded properties in ${metadataPath}")
+            if (platform == 'fabric') {
+                Map<String, Object> parsed = (Map<String, Object>) new JsonSlurper().parseText(metadata)
+                require(parsed.id == husk.projectId && parsed.name == husk.projectName && parsed.version == husk.projectVersion, 'Fabric identity does not match build properties')
+                require(parsed.environment == '*' && parsed.entrypoints == [main: [entrypoint]], 'incorrect Fabric entrypoints or environment')
+                require(parsed.depends instanceof Map && parsed.jars instanceof List, 'missing Fabric runtime requirements or nested jar declarations')
+                require(parsed.depends.minecraft == husk.minecraftVersion && parsed.depends.fabricloader == ">=${target.fabricLoader}" && parsed.depends.java == '>=25', 'incorrect Fabric runtime requirements')
+                List<String> modules = ['fabric-api-base', 'fabric-command-api-v2', 'fabric-lifecycle-events-v1']
+                Set<String> expected = modules.collect { String module -> "META-INF/jars/${module}.jar".toString() }.toSet()
+                List<String> declared = ((List<Map<String, String>>) parsed.jars).collect { Map<String, String> nested -> nested.file }
+                Set<String> bundled = archive.entries().findAll { JarEntry entry -> entry.name.startsWith('META-INF/jars/') && entry.name.endsWith('.jar') }.collect { JarEntry entry -> entry.name }.toSet()
+                require(declared.size() == modules.size() && declared.toSet() == expected && bundled == expected, 'Fabric nested jars must contain exactly the base, command and lifecycle modules')
+                modules.each { String module ->
+                    Map<String, Object> nestedMetadata = null
+                    new JarInputStream(archive.getInputStream(archive.getJarEntry("META-INF/jars/${module}.jar"))).withCloseable { JarInputStream nested ->
+                        JarEntry nestedEntry
+                        while ((nestedEntry = nested.nextJarEntry) != null) {
+                            if (nestedEntry.name == 'fabric.mod.json') {
+                                nestedMetadata = (Map<String, Object>) new JsonSlurper().parseText(new String(nested.readAllBytes(), StandardCharsets.UTF_8))
+                                break
+                            }
+                        }
+                    }
+                    require(nestedMetadata != null && nestedMetadata.id == module && nestedMetadata.version == target.fabricModules[module], "incorrect nested Fabric module ${module}")
+                }
+            } else if (platform == 'bukkit') {
+                Map<String, String> fields = [:]
+                metadata.eachLine { String line ->
+                    Matcher match = (line =~ /^([a-z-]+):\s*(.*?)\s*$/)
+                    if (match.matches()) {
+                        fields[match.group(1)] = match.group(2).replaceAll(/^['"]|['"]$/, '')
+                    }
+                }
+                require(fields.name == husk.projectName && fields.version == husk.projectVersion && fields.main == entrypoint, 'Bukkit identity does not match build properties')
+                require(fields['api-version'] == '26.1' && fields['folia-supported'] == 'true', 'incorrect Bukkit API or Folia declaration')
+                require(Pattern.compile('(?m)^  ' + Pattern.quote(husk.projectId) + ':\\s*$').matcher(metadata).find(), 'missing configured Bukkit command')
+            } else {
+                Closure<List<Map<String, String>>> sections = { String section ->
+                    List<Map<String, String>> matches = []
+                    Matcher blocks = Pattern.compile('(?ms)^\\[\\[' + Pattern.quote(section) + '\\]\\]\\s*\\n(.*?)(?=^\\[|\\z)').matcher(metadata)
+                    while (blocks.find()) {
+                        Map<String, String> fields = [:]
+                        Matcher values = Pattern.compile('(?m)^\\s*([A-Za-z][A-Za-z0-9]*)\\s*=\\s*"([^"\\r\\n]*)"\\s*$').matcher(blocks.group(1))
+                        while (values.find()) {
+                            fields[values.group(1)] = values.group(2)
+                        }
+                        matches.add(fields)
+                    }
+                    matches
+                }
+                List<Map<String, String>> mods = sections('mods')
+                require(mods.size() == 1 && mods[0].modId == husk.projectId && mods[0].version == husk.projectVersion && mods[0].displayName == husk.projectName, 'mod identity does not match build properties')
+                List<Map<String, String>> dependencies = sections('dependencies.' + husk.projectId)
+                Map<String, String> minecraft = dependencies.find { Map<String, String> dependency -> dependency.modId == 'minecraft' }
+                Map<String, String> loader = dependencies.find { Map<String, String> dependency -> dependency.modId == platform }
+                require(minecraft != null && minecraft.versionRange == "[${husk.minecraftVersion}]" && minecraft.side == 'BOTH', 'incorrect Minecraft dependency range')
+                String loaderRange = platform == 'forge' ? target.forgeLoaderRange : "[${target.neoforge},)"
+                require(loader != null && loader.versionRange == loaderRange && loader.side == 'BOTH', 'incorrect mod loader dependency range')
+                String fmlRange = platform == 'forge' ? target.forgeLoaderRange : '[3,)'
+                require(Pattern.compile('(?m)^modLoader\\s*=\\s*"javafml"\\s*$').matcher(metadata).find(), 'missing Java FML loader declaration')
+                require(Pattern.compile('(?m)^loaderVersion\\s*=\\s*"' + Pattern.quote(fmlRange) + '"\\s*$').matcher(metadata).find(), 'incorrect FML loader range')
+            }
+        }
+        URL[] locations = [artifact.toURI().toURL()] as URL[]
+        new URLClassLoader(locations, ClassLoader.getPlatformClassLoader()).withCloseable { URLClassLoader isolated ->
+            Class<?> identity = Class.forName(husk.projectGroup + '.core.BuildIdentity', true, isolated)
+            [ID: husk.projectId, NAME: husk.projectName, VERSION: husk.projectVersion].each { String field, String expected ->
+                require(identity.getField(field).get(null) == expected, "BuildIdentity.${field} does not match build properties")
+            }
+            require(identity.getField('MINECRAFT_VERSIONS').get(null) == minecraftTargets.keySet().toList(), 'BuildIdentity Minecraft targets do not match the manifest')
+        }
+    }
+}
+tasks.named('check').configure { dependsOn(verification) }

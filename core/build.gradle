@@ -1,0 +1,46 @@
+import groovy.json.JsonOutput
+
+plugins {
+    id 'java-library'
+}
+
+ext.huskRoot = projectDir.parentFile
+apply from: '../gradle/identity.gradle'
+apply from: '../gradle/java.gradle'
+
+if (rootProject.projectDir != huskRoot) {
+    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir('core'))
+}
+
+dependencies {
+    implementation("com.github.VolmitSoftware.VolmLib:volmlib-localization:${husk.volmLibVersion}")
+    testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
+}
+
+Provider<Directory> identityDirectory = layout.buildDirectory.dir('generated/sources/identity')
+tasks.register('generateBuildIdentity') {
+    inputs.properties(husk)
+    inputs.property('targets', minecraftTargets.keySet().toList())
+    outputs.dir(identityDirectory)
+    doLast {
+        File output = identityDirectory.get().file('art/arcane/husk/core/BuildIdentity.java').asFile
+        output.parentFile.mkdirs()
+        output.setText("""package art.arcane.husk.core;
+
+import java.util.List;
+
+public final class BuildIdentity {
+    public static final String ID = ${JsonOutput.toJson(husk.projectId)};
+    public static final String NAME = ${JsonOutput.toJson(husk.projectName)};
+    public static final String VERSION = ${JsonOutput.toJson(husk.projectVersion)};
+    public static final List<String> MINECRAFT_VERSIONS = List.of(${minecraftTargets.keySet().collect { String target -> JsonOutput.toJson(target) }.join(', ')});
+
+    private BuildIdentity() {
+    }
+}
+""", 'UTF-8')
+    }
+}
+sourceSets.main.java.srcDir(identityDirectory)
+tasks.named('compileJava').configure { dependsOn('generateBuildIdentity') }

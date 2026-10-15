@@ -1,0 +1,11 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'Husk'
+include(':core', ':bukkit')
+ext.huskRoot = settingsDir
+apply from: 'gradle/volmlib.settings.gradle'

@@ -1,0 +1,47 @@
+ext.huskRoot = file('../..')
+apply from: '../../gradle/identity.gradle'
+apply from: '../../gradle/java.gradle'
+apply from: '../../gradle/shadow.gradle'
+apply from: '../../gradle/verify-artifact.gradle'
+
+String target = husk.minecraftVersion
+String loader = projectDir.name
+Map<String, Object> targetProperties = minecraftTargets[target]
+ext.targetProperties = targetProperties
+layout.buildDirectory.set(layout.projectDirectory.dir("build/${target}"))
+
+sourceSets.main.java.srcDir('../mod-common/src/main/java')
+sourceSets.main.resources.srcDir('../mod-common/src/main/resources')
+for (String kind : ['java', 'resources']) {
+    org.gradle.api.file.SourceDirectorySet directories = kind == 'java' ? sourceSets.main.java : sourceSets.main.resources
+    List<File> overlays = [file("../mod-common/src/versions/${target}/${kind}"), file("src/versions/${target}/${kind}")]
+    for (File overlay : overlays) {
+        directories.srcDir(overlay)
+    }
+    directories.exclude { FileTreeElement entry ->
+        for (int index = overlays.size() - 1; index >= 0; index--) {
+            File replacement = new File(overlays[index], entry.relativePath.pathString)
+            if (replacement.isFile()) {
+                return entry.file.canonicalFile != replacement.canonicalFile
+            }
+        }
+        false
+    }
+}
+
+Map<String, String> metadata = husk + [
+    fabricLoaderVersion: targetProperties.fabricLoader,
+    forgeLoaderRange: targetProperties.forgeLoaderRange,
+    neoForgeVersion: targetProperties.neoforge
+]
+tasks.named('processResources').configure {
+    inputs.properties(metadata)
+    filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) { expand(metadata) }
+}
+tasks.named('shadowJar').configure {
+    String platform = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]
+    String loaderVersion = loader == 'fabric' ? targetProperties.fabricLoader : targetProperties[loader]
+    String displayVersion = loaderVersion.startsWith(target + '-') ? loaderVersion.substring(target.length() + 1) : loaderVersion
+    displayVersion = displayVersion.replaceFirst(/-beta$/, '')
+    archiveFileName.set("${husk.projectName} v${version} [${platform}] ${target}+${displayVersion}.jar")
+}

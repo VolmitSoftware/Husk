@@ -1,0 +1,9 @@
+name: '${projectName}'
+version: '${projectVersion}'
+main: ${projectGroup}.bukkit.HuskPlugin
+api-version: '${apiVersion}'
+folia-supported: true
+commands:
+  ${projectId}:
+    description: Shows the runtime status.
+    usage: '/<command> [status]'

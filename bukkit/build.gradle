@@ -1,0 +1,37 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '9.5.1'
+}
+
+ext.huskRoot = projectDir.parentFile
+apply from: '../gradle/identity.gradle'
+apply from: '../gradle/java.gradle'
+apply from: '../gradle/shadow.gradle'
+apply from: '../gradle/verify-artifact.gradle'
+
+repositories {
+    maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
+}
+dependencies {
+    compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+}
+tasks.named('processResources').configure {
+    inputs.properties(husk)
+    filesMatching('plugin.yml') { expand(husk + [apiVersion: '26.1']) }
+}
+tasks.named('shadowJar').configure {
+    archiveFileName.set("${husk.projectName} v${version} [CraftBukkit] 26.1.2-26.3.jar")
+}
+
+minecraftTargets.keySet().each { String target ->
+    String suffix = target.replace('.', '_')
+    Configuration targetApi = configurations.create("spigot${suffix}")
+    dependencies.add(targetApi.name, "org.spigotmc:spigot-api:${target}-R0.1-SNAPSHOT")
+    TaskProvider<JavaCompile> compatibility = tasks.register("compileSpigot${suffix}", JavaCompile) {
+        source = sourceSets.main.java
+        classpath = targetApi + configurations.bundle
+        destinationDirectory.set(layout.buildDirectory.dir("compatibility/${target}"))
+        dependsOn(':core:jar')
+    }
+    tasks.named('check').configure { dependsOn(compatibility) }
+}

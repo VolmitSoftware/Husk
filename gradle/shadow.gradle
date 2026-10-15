@@ -1,0 +1,28 @@
+configurations {
+    bundle {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+configurations.implementation.extendsFrom(configurations.bundle)
+dependencies {
+    bundle(project(':core'))
+}
+
+tasks.named('shadowJar').configure {
+    configurations = [project.configurations.bundle]
+    filesMatching('META-INF/services/**') { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
+    mergeServiceFiles()
+    if (husk.projectGroup != 'art.arcane.husk') {
+        relocate('art.arcane.husk', husk.projectGroup)
+    }
+    relocate('art.arcane.volmlib', "${husk.projectGroup}.internal.volmlib")
+    relocate('com.google.gson', "${husk.projectGroup}.internal.gson")
+    relocate('net.kyori', "${husk.projectGroup}.internal.kyori")
+    relocate('com.moandjiezana.toml', "${husk.projectGroup}.internal.toml")
+    exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class')
+    from(new File(huskRoot, 'LICENSE'))
+    archiveClassifier.set('')
+}
+tasks.named('jar').configure { enabled = false }
+tasks.named('assemble').configure { dependsOn('shadowJar') }

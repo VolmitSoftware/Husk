@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'net.fabricmc.fabric-loom' version '1.17.21'
+    id 'com.gradleup.shadow' version '9.5.1'
+}
+apply from: '../../gradle/mod.gradle'
+
+repositories {
+    maven { url = uri('https://maven.fabricmc.net/') }
+}
+configurations {
+    nestedApi { transitive = false }
+}
+dependencies {
+    minecraft("com.mojang:minecraft:${husk.minecraftVersion}")
+    implementation("net.fabricmc:fabric-loader:${targetProperties.fabricLoader}")
+    targetProperties.fabricModules.each { String module, String moduleVersion ->
+        implementation("net.fabricmc.fabric-api:${module}:${moduleVersion}")
+        nestedApi("net.fabricmc.fabric-api:${module}:${moduleVersion}")
+    }
+}
+tasks.named('shadowJar').configure {
+    from(project.configurations.nestedApi) {
+        into('META-INF/jars')
+        rename { String filename ->
+            String module = targetProperties.fabricModules.keySet().find { String name -> filename.startsWith(name + '-') }
+            if (module == null) {
+                throw new GradleException("Unexpected Fabric API jar ${filename}")
+            }
+            module + '.jar'
+        }
+    }
+}
+evaluationDependsOn(':core')
+loom {
+    mods {
+        register(husk.projectId) {
+            sourceSet(sourceSets.main)
+            modFiles.from(project.provider { project(':core').sourceSets.main.output })
+        }
+    }
+}

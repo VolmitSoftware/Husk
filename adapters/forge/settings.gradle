@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        maven { url = uri('https://maven.minecraftforge.net/') }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+rootProject.name = 'husk-forge'
+include(':core')
+project(':core').projectDir = file('../../core')
+ext.huskRoot = file('../..')
+apply from: '../../gradle/volmlib.settings.gradle'

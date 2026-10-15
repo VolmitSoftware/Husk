@@ -1,0 +1,33 @@
+File templateRoot = settings.ext.huskRoot.canonicalFile
+boolean useLocal = providers.gradleProperty('useLocalVolmLib').getOrElse('true').toBoolean()
+String configuredPath = providers.gradleProperty('localVolmLibDirectory').orElse(providers.environmentVariable('VOLMLIB_DIR')).orNull
+File localDirectory = null
+if (useLocal) {
+    if (configuredPath != null) {
+        localDirectory = new File(configuredPath)
+        if (!localDirectory.isAbsolute()) {
+            localDirectory = new File(templateRoot, configuredPath)
+        }
+        if (!new File(localDirectory, 'settings.gradle').isFile()) {
+            throw new GradleException("Invalid VolmLib directory: ${localDirectory}")
+        }
+    } else {
+        File ancestor = templateRoot
+        while (ancestor != null && localDirectory == null) {
+            File candidate = new File(ancestor, 'VolmLib')
+            if (new File(candidate, 'settings.gradle').isFile()) {
+                localDirectory = candidate
+            }
+            ancestor = ancestor.parentFile
+        }
+    }
+}
+if (localDirectory != null) {
+    includeBuild(localDirectory) {
+        name = 'VolmLib'
+        dependencySubstitution {
+            substitute(module('com.github.VolmitSoftware.VolmLib:volmlib-localization')).using(project(':localization'))
+            substitute(module('com.github.VolmitSoftware.VolmLib:volmlib-shared')).using(project(':shared'))
+        }
+    }
+}

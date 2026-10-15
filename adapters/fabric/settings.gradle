@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        maven { url = uri('https://maven.fabricmc.net/') }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+rootProject.name = 'husk-fabric'
+include(':core')
+project(':core').projectDir = file('../../core')
+ext.huskRoot = file('../..')
+apply from: '../../gradle/volmlib.settings.gradle'

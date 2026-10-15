@@ -1,0 +1,129 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+plugins {
+    id 'base'
+}
+
+ext.huskRoot = projectDir
+apply from: 'gradle/identity.gradle'
+
+tasks.register('targets') {
+    group = 'help'
+    description = 'Lists the supported Minecraft and mod loader versions.'
+    doLast {
+        minecraftTargets.each { String target, Map<String, Object> loaders ->
+            println("${target}: Fabric ${loaders.fabricLoader}, Forge ${loaders.forge}, NeoForge ${loaders.neoforge}")
+        }
+    }
+}
+
+List<TaskProvider<Exec>> matrixBuilds = []
+['fabric', 'forge', 'neoforge'].each { String loader ->
+    List<TaskProvider<Exec>> loaderBuilds = []
+    minecraftTargets.keySet().each { String target ->
+        String taskName = "${loader}Jar${target.replace('.', '_')}"
+        TaskProvider<Exec> targetBuild = tasks.register(taskName, Exec) {
+            group = 'build'
+            description = "Builds and checks ${loader} for Minecraft ${target}."
+            dependsOn(':core:check')
+            workingDir(projectDir)
+            List<String> arguments = [new File(projectDir, System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows') ? 'gradlew.bat' : 'gradlew').absolutePath,
+                '-p', "adapters/${loader}", '--project-cache-dir', file("adapters/${loader}/build/gradle-cache/${target}").absolutePath,
+                '--init-script', file('gradle/volmlib-isolation.init.gradle').absolutePath,
+                "-PvolmLibBuildDirectory=${file("adapters/${loader}/build/${target}/volmlib").absolutePath}",
+                '--no-daemon', '--console=plain', '--max-workers=2', 'build', "-PminecraftVersion=${target}"]
+            husk.each { String key, String value ->
+                if (key != 'minecraftVersion') {
+                    arguments.add("-P${key}=${value}".toString())
+                }
+            }
+            for (String key : ['useLocalVolmLib', 'localVolmLibDirectory']) {
+                String value = providers.gradleProperty(key).orNull
+                if (value != null) {
+                    arguments.add("-P${key}=${key == 'localVolmLibDirectory' ? file(value).absolutePath : value}".toString())
+                }
+            }
+            commandLine(arguments)
+        }
+        loaderBuilds.add(targetBuild)
+        matrixBuilds.add(targetBuild)
+    }
+    tasks.register("${loader}Jar") {
+        group = 'build'
+        dependsOn("${loader}Jar${husk.minecraftVersion.replace('.', '_')}")
+    }
+    String loaderName = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]
+    tasks.register("build${loaderName}") {
+        group = 'build'
+        description = "Builds every supported ${loader} target."
+        dependsOn(loaderBuilds)
+    }
+}
+matrixBuilds.eachWithIndex { TaskProvider<Exec> targetBuild, int index ->
+    List<TaskProvider<Exec>> earlierBuilds = new ArrayList<>(matrixBuilds.subList(0, index))
+    targetBuild.configure { mustRunAfter(earlierBuilds) }
+}
+
+tasks.register('distributions', Sync) {
+    group = 'build'
+    description = 'Builds all ten distributions into build/distributions.'
+    dependsOn(matrixBuilds, ':bukkit:build')
+    from(project(':bukkit').tasks.named('shadowJar'))
+    ['fabric', 'forge', 'neoforge'].each { String loader ->
+        minecraftTargets.keySet().each { String target ->
+            String platform = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]
+            String loaderVersion = loader == 'fabric' ? minecraftTargets[target].fabricLoader : minecraftTargets[target][loader]
+            String displayVersion = loaderVersion.startsWith(target + '-') ? loaderVersion.substring(target.length() + 1) : loaderVersion
+            displayVersion = displayVersion.replaceFirst(/-beta$/, '')
+            from("adapters/${loader}/build/${target}/libs/${husk.projectName} v${version} [${platform}] ${target}+${displayVersion}.jar")
+        }
+    }
+    into(layout.buildDirectory.dir('distributions'))
+}
+tasks.register('test') {
+    group = 'verification'
+    dependsOn(':core:test')
+}
+tasks.register('verifyDistributions') {
+    group = 'verification'
+    dependsOn('distributions')
+    inputs.files(fileTree(layout.buildDirectory.dir('distributions')) { include('*.jar') })
+    outputs.file(layout.buildDirectory.file('artifacts.json'))
+    doLast {
+        List<File> artifacts = fileTree(layout.buildDirectory.dir('distributions')) { include('*.jar') }.files.sort { File artifact -> artifact.name }
+        int expected = 1 + minecraftTargets.size() * 3
+        if (artifacts.size() != expected) {
+            throw new GradleException("Expected ${expected} distributions, found ${artifacts.size()}")
+        }
+        List<Map<String, Object>> manifest = artifacts.collect { File artifact ->
+            [file: artifact.name, bytes: artifact.length(), sha256: HexFormat.of().formatHex(MessageDigest.getInstance('SHA-256').digest(artifact.bytes))]
+        }
+        layout.buildDirectory.file('artifacts.json').get().asFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n', 'UTF-8')
+    }
+}
+tasks.named('assemble').configure { dependsOn('distributions') }
+tasks.named('check').configure { dependsOn(':core:check', ':bukkit:check', 'verifyDistributions') }
+tasks.register('buildAll') {
+    group = 'build'
+    dependsOn('build')
+}
+tasks.register('buildAllToOut', Copy) {
+    group = 'build'
+    description = 'Builds every distribution and copies it to PluginOuts or pluginOutDirectory.'
+    dependsOn('build')
+    from(layout.buildDirectory.dir('distributions'))
+    into(providers.gradleProperty('pluginOutDirectory').getOrElse('../PluginOuts'))
+}
+tasks.register('buildBukkit') {
+    group = 'build'
+    dependsOn(':bukkit:build')
+}
+tasks.register('checkAll') {
+    group = 'verification'
+    dependsOn('build')
+}
+tasks.named('clean').configure {
+    delete(fileTree('adapters') { include('**/build/**') })
+    dependsOn(':core:clean', ':bukkit:clean')
+}
