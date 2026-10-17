@@ -6,7 +6,6 @@ import art.arcane.husk.core.HuskSplash;
 import art.arcane.husk.core.Platform;
 import art.arcane.husk.core.RuntimeEnvironment;
 import com.mojang.brigadier.CommandDispatcher;
-import net.minecraft.SharedConstants;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -35,7 +34,7 @@ public final class HuskModRuntime {
             throw new IllegalStateException(BuildIdentity.NAME + " is already running");
         }
         RuntimeEnvironment environment = new RuntimeEnvironment(
-            platform, SharedConstants.getCurrentVersion().name(), dataDirectory);
+            platform, MinecraftVersion.current(), dataDirectory);
         HuskRuntime started = new HuskRuntime(environment);
         try {
             started.start();

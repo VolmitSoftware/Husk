@@ -9,12 +9,19 @@ String loader = projectDir.name
 Map<String, Object> targetProperties = minecraftTargets[target]
 ext.targetProperties = targetProperties
 layout.buildDirectory.set(layout.projectDirectory.dir("build/${target}"))
+tasks.withType(JavaCompile).configureEach { options.release.set((int) targetProperties.javaVersion) }
 
 sourceSets.main.java.srcDir('../mod-common/src/main/java')
 sourceSets.main.resources.srcDir('../mod-common/src/main/resources')
 for (String kind : ['java', 'resources']) {
     org.gradle.api.file.SourceDirectorySet directories = kind == 'java' ? sourceSets.main.java : sourceSets.main.resources
-    List<File> overlays = [file("../mod-common/src/versions/${target}/${kind}"), file("src/versions/${target}/${kind}")]
+    List<File> overlays = []
+    if (targetProperties.sourceFamily != null) {
+        overlays.add(file("../mod-common/src/families/${targetProperties.sourceFamily}/${kind}"))
+        overlays.add(file("src/families/${targetProperties.sourceFamily}/${kind}"))
+    }
+    overlays.add(file("../mod-common/src/versions/${target}/${kind}"))
+    overlays.add(file("src/versions/${target}/${kind}"))
     for (File overlay : overlays) {
         directories.srcDir(overlay)
     }
@@ -32,7 +39,8 @@ for (String kind : ['java', 'resources']) {
 Map<String, String> metadata = husk + [
     fabricLoaderVersion: targetProperties.fabricLoader,
     forgeLoaderRange: targetProperties.forgeLoaderRange,
-    neoForgeVersion: targetProperties.neoforge
+    neoForgeVersion: targetProperties.neoforge ?: '',
+    javaVersion: targetProperties.javaVersion.toString()
 ]
 tasks.named('processResources').configure {
     inputs.properties(metadata)

@@ -52,7 +52,7 @@ class HuskRuntimeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"26.1.2", "26.2", "26.3"})
+    @ValueSource(strings = {"1.20.1", "1.21.1", "26.1.2", "26.2", "26.3"})
     void acceptsSupportedMinecraftVersions(String minecraftVersion) throws IOException {
         HuskRuntime runtime = new HuskRuntime(new RuntimeEnvironment(Platform.FABRIC, minecraftVersion, directory));
 
@@ -63,7 +63,7 @@ class HuskRuntimeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"26.1", "26.1.1", "26.2.1", "26.3.1", "26.4", "1.21.11"})
+    @ValueSource(strings = {"1.20", "1.20.2", "1.21", "1.21.2", "26.1", "26.1.1", "26.2.1", "26.3.1", "26.4", "1.21.11"})
     void rejectsUnsupportedMinecraftBeforeWriting(String minecraftVersion) {
         Path dataDirectory = directory.resolve("unsupported");
         HuskRuntime runtime = new HuskRuntime(new RuntimeEnvironment(Platform.FORGE, minecraftVersion, dataDirectory));

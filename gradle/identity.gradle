@@ -19,6 +19,17 @@ if (!(values.projectName ==~ /[A-Za-z][A-Za-z0-9_-]*/) || !(values.projectVersio
     throw new GradleException('projectName must be an identifier and projectVersion must be a semantic version')
 }
 Map<String, Map<String, Object>> targets = (Map<String, Map<String, Object>>) new JsonSlurper().parse(new File(project.ext.huskRoot, 'gradle/targets.json'))
+targets.each { String target, Map<String, Object> properties ->
+    if (!(properties.forge instanceof String) || properties.forge.isBlank() || !properties.forgeLoaderRange) {
+        throw new GradleException("Minecraft ${target} must declare Forge support")
+    }
+    if (!(properties.javaVersion in [17, 21, 25])) {
+        throw new GradleException("Minecraft ${target} must declare its Java runtime version")
+    }
+    if (!(properties.forgeRuntimeMappings in ['srg', 'official'])) {
+        throw new GradleException("Minecraft ${target} must declare its Forge runtime mappings")
+    }
+}
 if (!targets.containsKey(values.minecraftVersion)) {
     throw new GradleException("Unsupported Minecraft target ${values.minecraftVersion}; choose ${targets.keySet().join(', ')}")
 }

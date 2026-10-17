@@ -23,7 +23,7 @@ public final class HuskSplash {
         String server = SplashScreenSupport.serverVersionWithoutMcSuffix(
                 Objects.requireNonNull(serverDescription, "serverDescription"));
         List<String> supported = BuildIdentity.MINECRAFT_VERSIONS;
-        String supportRange = supported.getFirst() + " - " + supported.getLast();
+        String supportRange = String.join(", ", supported);
         String[] details = {
                 "Platform: " + environment.platform() + " | Minecraft: " + environment.minecraftVersion(),
                 BuildIdentity.NAME + ", Plugin & Mod Template ["

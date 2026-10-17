@@ -18,6 +18,10 @@ dependencies {
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
 }
 
+tasks.withType(Test).configureEach {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
+}
+
 Provider<Directory> identityDirectory = layout.buildDirectory.dir('generated/sources/identity')
 tasks.register('generateBuildIdentity') {
     inputs.properties(husk)

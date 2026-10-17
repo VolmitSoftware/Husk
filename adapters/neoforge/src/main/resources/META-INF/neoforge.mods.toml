@@ -9,6 +9,9 @@ displayName = "${projectName}"
 description = "Shared plugin and mod runtime."
 authors = "Volmit Software"
 
+[features.${projectId}]
+javaVersion = "[${javaVersion},)"
+
 [[dependencies.${projectId}]]
 modId = "neoforge"
 type = "required"

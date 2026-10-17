@@ -17,6 +17,8 @@ class RuntimeEnvironmentTest {
 
     @ParameterizedTest
     @CsvSource({
+            "1.20.1-R0.1-SNAPSHOT,1.20.1",
+            "1.21.1-R0.1-SNAPSHOT,1.21.1",
             "26.2-R0.1-SNAPSHOT,26.2",
             "26.1.2.build.74-stable,26.1.2",
             "26.3.build.9-alpha,26.3",

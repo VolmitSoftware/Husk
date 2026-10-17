@@ -5,11 +5,13 @@ configurations {
     }
 }
 configurations.implementation.extendsFrom(configurations.bundle)
+ext.distributionJar = tasks.named('shadowJar').flatMap { task -> task.archiveFile }
 dependencies {
     bundle(project(':core'))
 }
 
 tasks.named('shadowJar').configure {
+    addMultiReleaseAttribute.set(false)
     configurations = [project.configurations.bundle]
     filesMatching('META-INF/services/**') { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
     mergeServiceFiles()

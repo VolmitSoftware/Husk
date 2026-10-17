@@ -13,7 +13,7 @@ tasks.register('targets') {
     description = 'Lists the supported Minecraft and mod loader versions.'
     doLast {
         minecraftTargets.each { String target, Map<String, Object> loaders ->
-            println("${target}: Fabric ${loaders.fabricLoader}, Forge ${loaders.forge}, NeoForge ${loaders.neoforge}")
+            println("${target}: Fabric ${loaders.fabricLoader}, Forge ${loaders.forge}, NeoForge ${loaders.neoforgeUsesForge ? 'shares the Forge jar' : loaders.neoforge}")
         }
     }
 }
@@ -23,6 +23,14 @@ List<TaskProvider<Exec>> matrixBuilds = []
     List<TaskProvider<Exec>> loaderBuilds = []
     minecraftTargets.keySet().each { String target ->
         String taskName = "${loader}Jar${target.replace('.', '_')}"
+        if (loader == 'neoforge' && minecraftTargets[target].neoforgeUsesForge) {
+            tasks.register(taskName) {
+                group = 'build'
+                description = "Builds the shared Forge/NeoForge jar for Minecraft ${target}."
+                dependsOn("forgeJar${target.replace('.', '_')}")
+            }
+            return
+        }
         TaskProvider<Exec> targetBuild = tasks.register(taskName, Exec) {
             group = 'build'
             description = "Builds and checks ${loader} for Minecraft ${target}."
@@ -58,6 +66,10 @@ List<TaskProvider<Exec>> matrixBuilds = []
         group = 'build'
         description = "Builds every supported ${loader} target."
         dependsOn(loaderBuilds)
+        if (loader == 'neoforge') {
+            minecraftTargets.findAll { String target, Map<String, Object> properties -> properties.neoforgeUsesForge }
+                .keySet().each { String target -> dependsOn("forgeJar${target.replace('.', '_')}") }
+        }
     }
 }
 matrixBuilds.eachWithIndex { TaskProvider<Exec> targetBuild, int index ->
@@ -67,11 +79,14 @@ matrixBuilds.eachWithIndex { TaskProvider<Exec> targetBuild, int index ->
 
 tasks.register('distributions', Sync) {
     group = 'build'
-    description = 'Builds all ten distributions into build/distributions.'
+    description = 'Builds all supported distributions into build/distributions.'
     dependsOn(matrixBuilds, ':bukkit:build')
     from(project(':bukkit').tasks.named('shadowJar'))
     ['fabric', 'forge', 'neoforge'].each { String loader ->
         minecraftTargets.keySet().each { String target ->
+            if (loader == 'neoforge' && minecraftTargets[target].neoforgeUsesForge) {
+                return
+            }
             String platform = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]
             String loaderVersion = loader == 'fabric' ? minecraftTargets[target].fabricLoader : minecraftTargets[target][loader]
             String displayVersion = loaderVersion.startsWith(target + '-') ? loaderVersion.substring(target.length() + 1) : loaderVersion
@@ -92,7 +107,7 @@ tasks.register('verifyDistributions') {
     outputs.file(layout.buildDirectory.file('artifacts.json'))
     doLast {
         List<File> artifacts = fileTree(layout.buildDirectory.dir('distributions')) { include('*.jar') }.files.sort { File artifact -> artifact.name }
-        int expected = 1 + minecraftTargets.size() * 3
+        int expected = 1 + matrixBuilds.size()
         if (artifacts.size() != expected) {
             throw new GradleException("Expected ${expected} distributions, found ${artifacts.size()}")
         }

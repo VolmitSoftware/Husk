@@ -29,7 +29,7 @@ class HuskSplashTest {
                 () -> assertTrue(splash.contains("Version: " + BuildIdentity.VERSION)),
                 () -> assertTrue(splash.contains("Platform: " + platform.name())),
                 () -> assertTrue(splash.contains("Minecraft: 26.3")),
-                () -> assertTrue(splash.contains("MC Support: 26.1.2 - 26.3")),
+                () -> assertTrue(splash.contains("MC Support: 1.20.1, 1.21.1, 26.1.2, 26.2, 26.3")),
                 () -> assertTrue(splash.contains("Server: Example server")),
                 () -> assertFalse(splash.contains("(MC:")),
                 () -> assertTrue(splash.contains("Java: " + Runtime.version().feature())),
