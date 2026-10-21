@@ -1,0 +1,60 @@
+gradle.projectsEvaluated {
+    Jar bukkitArchive = project(':bukkit').tasks.named('shadowJar', Jar).get()
+    List<Map<String, Object>> targets = [[
+        id: 'bukkit',
+        tasks: [':core:check', ':bukkit:build'],
+        arguments: [],
+        java: 25,
+        memoryMiB: 4096,
+        workers: 2,
+        dependsOn: [],
+        artifacts: [[
+            path: relativePath(bukkitArchive.archiveFile.get().asFile),
+            role: 'runtime',
+            platforms: ['plugin'],
+            minecraftVersions: minecraftTargets.keySet().toList()
+        ]]
+    ]]
+    for (String loader : ['fabric', 'forge', 'neoforge']) {
+        minecraftTargets.each { String minecraft, Map<String, Object> properties ->
+            if (loader == 'neoforge' && properties.neoforgeUsesForge) {
+                return
+            }
+            String platform = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]
+            String loaderVersion = loader == 'fabric' ? properties.fabricLoader : properties[loader]
+            String displayVersion = loaderVersion.startsWith(minecraft + '-')
+                    ? loaderVersion.substring(minecraft.length() + 1) : loaderVersion
+            displayVersion = displayVersion.replaceFirst(/-beta$/, '')
+            List<String> arguments = ['-p', "adapters/${loader}".toString(), "-PminecraftVersion=${minecraft}".toString()]
+            husk.each { String key, String value ->
+                if (key != 'minecraftVersion') {
+                    arguments.add("-P${key}=${value}".toString())
+                }
+            }
+            targets.add([
+                id: "${loader}-${minecraft}".toString(),
+                tasks: [':core:check', ':build'],
+                arguments: arguments,
+                java: 25,
+                memoryMiB: 4096,
+                workers: 2,
+                dependsOn: [],
+                artifacts: [[
+                    path: "adapters/${loader}/build/${minecraft}/libs/${husk.projectName} v${version} [${platform}] ${minecraft}+${displayVersion}.jar".toString(),
+                    role: 'runtime',
+                    platforms: loader == 'forge' && properties.neoforgeUsesForge ? ['forge', 'neoforge'] : [loader],
+                    minecraftVersions: [minecraft]
+                ]]
+            ])
+        }
+    }
+    rootProject.ext.multiplexor = [
+        schema: 1,
+        id: 'husk',
+        name: husk.projectName,
+        sandbox: 'per-target',
+        parallelTargets: true,
+        sourceDependencies: ['volmlib'],
+        targets: targets
+    ]
+}

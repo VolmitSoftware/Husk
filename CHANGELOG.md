@@ -4,6 +4,7 @@
 
 ### Added
 
+- Multiplexor target declarations for isolated Bukkit and mod-loader builds from the project target matrix.
 - Shared runtime with typed atomic configuration and a status command across Spigot, Paper, Folia, Fabric, Forge, and NeoForge.
 - Minecraft 26.1.2, 26.2, and 26.3 build targets with independent mod-loader builds, version source overrides, and local VolmLib resolution.
 - Volmit startup splash and platform/version artifact names.
@@ -20,3 +21,7 @@
 ### Fixed
 
 - Prevent shaded jars from declaring nonexistent multi-release entries that stop older Forge loaders from starting.
+
+### Removed
+
+- Gradle export tasks that copy distributions outside the project build directory.
