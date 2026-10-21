@@ -123,13 +123,6 @@ tasks.register('buildAll') {
     group = 'build'
     dependsOn('build')
 }
-tasks.register('buildAllToOut', Copy) {
-    group = 'build'
-    description = 'Builds every distribution and copies it to PluginOuts or pluginOutDirectory.'
-    dependsOn('build')
-    from(layout.buildDirectory.dir('distributions'))
-    into(providers.gradleProperty('pluginOutDirectory').getOrElse('../PluginOuts'))
-}
 tasks.register('buildBukkit') {
     group = 'build'
     dependsOn(':bukkit:build')
@@ -142,3 +135,5 @@ tasks.named('clean').configure {
     delete(fileTree('adapters') { include('**/build/**') })
     dependsOn(':core:clean', ':bukkit:clean')
 }
+
+apply from: 'gradle/multiplexor.gradle'
