@@ -1,13 +1,22 @@
 gradle.projectsEvaluated {
     Jar bukkitArchive = project(':bukkit').tasks.named('shadowJar', Jar).get()
     List<Map<String, Object>> targets = [[
-        id: 'bukkit',
-        tasks: [':core:check', ':bukkit:build'],
+        id: 'core',
+        tasks: [':core:check'],
         arguments: [],
         java: 25,
         memoryMiB: 4096,
         workers: 2,
         dependsOn: [],
+        artifacts: []
+    ], [
+        id: 'bukkit',
+        tasks: [':bukkit:build'],
+        arguments: [],
+        java: 25,
+        memoryMiB: 4096,
+        workers: 2,
+        dependsOn: ['husk:core'],
         artifacts: [[
             path: relativePath(bukkitArchive.archiveFile.get().asFile),
             role: 'runtime',
@@ -33,12 +42,12 @@ gradle.projectsEvaluated {
             }
             targets.add([
                 id: "${loader}-${minecraft}".toString(),
-                tasks: [':core:check', ':build'],
+                tasks: [':build'],
                 arguments: arguments,
                 java: 25,
                 memoryMiB: 4096,
                 workers: 2,
-                dependsOn: [],
+                dependsOn: ['husk:core'],
                 artifacts: [[
                     path: "adapters/${loader}/build/${minecraft}/libs/${husk.projectName} v${version} [${platform}] ${minecraft}+${displayVersion}.jar".toString(),
                     role: 'runtime',

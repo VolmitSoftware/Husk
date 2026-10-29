@@ -15,8 +15,10 @@
 
 ### Changed
 
+- Set the project release version to 0.1.2 across all platform artifacts.
 - Compile the shared runtime and Bukkit adapter for Java 17, with mod adapters targeting Java 17, 21, or 25 for their Minecraft release.
 - List exact supported releases in the loader splash and collect all fifteen distributions with the existing platform/version naming convention.
+- Run the shared runtime checks once per Multiplexor build in a `core` target that the Bukkit and mod-loader targets require.
 
 ### Fixed
 
